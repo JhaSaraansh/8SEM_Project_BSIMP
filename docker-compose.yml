@@ -1,0 +1,109 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────────────
+#  EduChain — Docker Compose
+#
+#  Services:
+#    hardhat   Local Ethereum node (Hardhat) — dev only
+#    deployer  One-shot: compiles & deploys contracts, syncs ABIs
+#    backend   Express API (port 5000)
+#    frontend  React app via nginx (port 3000)
+#
+#  Usage:
+#    docker compose up --build          # Full stack
+#    docker compose up backend frontend # Skip local chain (use real testnet)
+# ──────────────────────────────────────────────────────────────────────
+
+networks:
+  educhain:
+    driver: bridge
+
+volumes:
+  artifacts:
+  deployments:
+
+services:
+
+  # ── Local Ethereum node ────────────────────────────────────────────
+  hardhat:
+    build:
+      context: .
+      dockerfile: docker/hardhat.Dockerfile
+    container_name: educhain-hardhat
+    ports:
+      - "8545:8545"
+    networks:
+      - educhain
+    volumes:
+      - artifacts:/app/artifacts
+      - deployments:/app/deployments
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8545", "-d", "{\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[],\"id\":1}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Contract deployer (runs once) ─────────────────────────────────
+  deployer:
+    build:
+      context: .
+      dockerfile: docker/hardhat.Dockerfile
+    container_name: educhain-deployer
+    command: ["sh", "-c", "npx hardhat run scripts/deploy.js --network docker && npx hardhat run scripts/seed.js --network docker"]
+    depends_on:
+      hardhat:
+        condition: service_healthy
+    networks:
+      - educhain
+    volumes:
+      - artifacts:/app/artifacts
+      - deployments:/app/deployments
+    environment:
+      - RPC_URL=http://hardhat:8545
+
+  # ── Backend API ────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend.Dockerfile
+    container_name: educhain-backend
+    ports:
+      - "5000:5000"
+    networks:
+      - educhain
+    volumes:
+      - artifacts:/app/artifacts
+      - deployments:/app/deployments
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - RPC_URL=http://hardhat:8545
+      - FRONTEND_URL=http://localhost:3000
+      - ADMIN_PRIVATE_KEY=${ADMIN_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+    depends_on:
+      deployer:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/api/health"]
+      interval: 8s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Frontend (nginx) ───────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/frontend.Dockerfile
+      args:
+        - REACT_APP_API_URL=http://localhost:5000/api
+    container_name: educhain-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - educhain
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

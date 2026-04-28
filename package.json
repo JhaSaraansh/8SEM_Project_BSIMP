@@ -1,0 +1,25 @@
+{
+  "name": "educhain-student-management",
+  "version": "1.0.0",
+  "description": "Blockchain-based Student Management System on Ethereum",
+  "private": true,
+  "scripts": {
+    "compile":         "npx hardhat compile",
+    "test":            "npx hardhat test",
+    "node":            "npx hardhat node",
+    "deploy:local":    "npx hardhat run scripts/deploy.js --network localhost",
+    "deploy:sepolia":  "npx hardhat run scripts/deploy.js --network sepolia",
+    "deploy:mainnet":  "npx hardhat run scripts/deploy.js --network mainnet",
+    "backend":         "cd backend && npm run dev",
+    "frontend":        "cd frontend && npm start",
+    "dev":             "concurrently \"npm run node\" \"sleep 3 && npm run deploy:local\" \"sleep 8 && npm run backend\" \"sleep 8 && npm run frontend\""
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "concurrently": "^8.2.2",
+    "hardhat": "^2.22.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  }
+}
